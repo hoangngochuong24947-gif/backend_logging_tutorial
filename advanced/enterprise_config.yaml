@@ -1,0 +1,493 @@
+# 企业级日志配置模板
+# 适用于生产环境的完整日志系统配置
+
+# ============================================
+# 1. 基础配置
+# ============================================
+
+version: 1
+disable_existing_loggers: false
+
+# ============================================
+# 2. 日志格式化器配置
+# ============================================
+
+formatters:
+  # 标准格式 - 控制台输出
+  standard:
+    format: "%(asctime)s [%(levelname)s] [%(name)s:%(lineno)d] %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+
+  # 详细格式 - 文件输出
+  verbose:
+    format: "%(asctime)s [%(levelname)s] [%(process)d:%(thread)d] [%(name)s:%(funcName)s:%(lineno)d] %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+
+  # JSON格式 - 结构化日志
+  json:
+    class: "pythonjsonlogger.jsonlogger.JsonFormatter"
+    format: "%(asctime)s %(levelname)s %(name)s %(message)s"
+    datefmt: "%Y-%m-%dT%H:%M:%S%z"
+
+  # 访问日志格式
+  access:
+    format: "%(asctime)s - %(client_addr)s - \"%(request_line)s\" %(status_code)s %(response_size)s %(duration).3f"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+
+# ============================================
+# 3. 处理器配置
+# ============================================
+
+handlers:
+  # 控制台输出 - 开发环境
+  console:
+    class: "logging.StreamHandler"
+    level: "INFO"
+    formatter: "standard"
+    stream: "ext://sys.stdout"
+
+  # 应用日志文件 - 轮转
+  app_file:
+    class: "logging.handlers.RotatingFileHandler"
+    level: "INFO"
+    formatter: "verbose"
+    filename: "/var/log/app/app.log"
+    maxBytes: 10485760  # 10MB
+    backupCount: 10
+    encoding: "utf-8"
+
+  # 错误日志文件 - 单独存储
+  error_file:
+    class: "logging.handlers.RotatingFileHandler"
+    level: "ERROR"
+    formatter: "verbose"
+    filename: "/var/log/app/error.log"
+    maxBytes: 5242880  # 5MB
+    backupCount: 5
+    encoding: "utf-8"
+
+  # 访问日志文件 - 按天轮转
+  access_file:
+    class: "logging.handlers.TimedRotatingFileHandler"
+    level: "INFO"
+    formatter: "access"
+    filename: "/var/log/app/access.log"
+    when: "midnight"
+    interval: 1
+    backupCount: 30
+    encoding: "utf-8"
+
+  # 调试日志文件 - 开发环境
+  debug_file:
+    class: "logging.FileHandler"
+    level: "DEBUG"
+    formatter: "verbose"
+    filename: "/var/log/app/debug.log"
+    encoding: "utf-8"
+    mode: "a"
+
+  # JSON日志文件 - 用于日志分析
+  json_file:
+    class: "logging.handlers.RotatingFileHandler"
+    level: "INFO"
+    formatter: "json"
+    filename: "/var/log/app/structured.log"
+    maxBytes: 10485760  # 10MB
+    backupCount: 20
+    encoding: "utf-8"
+
+  # Syslog处理器 - 系统集成
+  syslog:
+    class: "logging.handlers.SysLogHandler"
+    level: "WARNING"
+    formatter: "standard"
+    address: "/dev/log"  # Linux
+    # address: ("localhost", 514)  # Windows/网络
+
+  # 邮件告警 - 关键错误
+  email:
+    class: "logging.handlers.SMTPHandler"
+    level: "CRITICAL"
+    formatter: "verbose"
+    mailhost: "smtp.example.com"
+    fromaddr: "alerts@example.com"
+    toaddrs: ["admin@example.com", "ops@example.com"]
+    subject: "应用系统 - 严重错误告警"
+    credentials: ("username", "password")
+    secure: ()
+
+# ============================================
+# 4. 日志器配置
+# ============================================
+
+loggers:
+  # 根日志器 - 默认配置
+  "":
+    handlers: [console, app_file, error_file]
+    level: "WARNING"
+    propagate: true
+
+  # 应用主日志器
+  app:
+    handlers: [app_file, error_file, json_file]
+    level: "INFO"
+    propagate: false
+
+  # API相关日志
+  app.api:
+    handlers: [app_file, json_file]
+    level: "DEBUG"
+    propagate: false
+
+  # 数据库相关日志
+  app.db:
+    handlers: [app_file, error_file]
+    level: "INFO"
+    propagate: false
+    qualname: "app.db"
+
+  # 任务队列日志
+  app.tasks:
+    handlers: [app_file, json_file]
+    level: "INFO"
+    propagate: false
+
+  # 外部服务集成日志
+  app.integrations:
+    handlers: [app_file, error_file]
+    level: "WARNING"
+    propagate: false
+
+  # 安全审计日志
+  security:
+    handlers: [app_file, json_file]
+    level: "INFO"
+    propagate: false
+
+  # 性能监控日志
+  performance:
+    handlers: [json_file]
+    level: "INFO"
+    propagate: false
+
+  # 访问日志
+  access:
+    handlers: [access_file]
+    level: "INFO"
+    propagate: false
+
+  # 第三方库日志控制
+  requests:
+    handlers: [app_file]
+    level: "WARNING"
+    propagate: false
+
+  sqlalchemy.engine:
+    handlers: [app_file]
+    level: "WARNING"
+    propagate: false
+
+  urllib3:
+    handlers: [app_file]
+    level: "WARNING"
+    propagate: false
+
+# ============================================
+# 5. 过滤器配置
+# ============================================
+
+filters:
+  # 重要信息过滤器
+  important_only:
+    (): "app.logging.filters.ImportantFilter"
+
+  # 敏感信息过滤器
+  sensitive_filter:
+    (): "app.logging.filters.SensitiveDataFilter"
+    patterns:
+      - "password=.*"
+      - "token=.*"
+      - "credit_card=.*"
+
+# ============================================
+# 6. 环境特定配置覆盖
+# ============================================
+
+# 开发环境覆盖
+development:
+  loggers:
+    "":
+      handlers: [console, debug_file]
+      level: "DEBUG"
+    app:
+      handlers: [console, debug_file]
+      level: "DEBUG"
+    app.api:
+      handlers: [console, debug_file]
+      level: "DEBUG"
+
+# 测试环境覆盖
+testing:
+  loggers:
+    "":
+      handlers: [console, app_file]
+      level: "INFO"
+    app:
+      handlers: [console, app_file]
+      level: "INFO"
+
+# 生产环境覆盖
+production:
+  loggers:
+    "":
+      handlers: [app_file, error_file, syslog]
+      level: "WARNING"
+    app:
+      handlers: [app_file, error_file, json_file, syslog]
+      level: "INFO"
+    app.api:
+      level: "WARNING"
+
+# ============================================
+# 7. 日志轮转策略
+# ============================================
+
+rotation:
+  # 按大小轮转
+  by_size:
+    max_bytes: 10485760  # 10MB
+    backup_count: 10
+    encoding: "utf-8"
+
+  # 按时间轮转
+  by_time:
+    when: "midnight"
+    interval: 1
+    backup_count: 30
+    encoding: "utf-8"
+    utc: false
+
+  # 按大小和时间轮转
+  hybrid:
+    max_bytes: 52428800  # 50MB
+    backup_count: 100
+    when: "W0"  # 每周一
+    interval: 1
+
+# ============================================
+# 8. 监控和告警配置
+# ============================================
+
+monitoring:
+  # 错误率监控
+  error_rate:
+    threshold: 5  # 百分比
+    time_window: "5m"
+    check_interval: "1m"
+
+  # 慢查询监控
+  slow_queries:
+    threshold_ms: 1000  # 1秒
+    time_window: "10m"
+
+  # 磁盘空间监控
+  disk_space:
+    threshold_percent: 80
+    check_interval: "5m"
+
+  # 告警通知
+  alerts:
+    email:
+      enabled: true
+      recipients: ["admin@example.com"]
+      levels: ["CRITICAL", "ERROR"]
+    slack:
+      enabled: true
+      webhook_url: "https://hooks.slack.com/services/..."
+      channel: "#alerts"
+      levels: ["ERROR", "WARNING"]
+    pagerduty:
+      enabled: false
+      integration_key: ""
+      levels: ["CRITICAL"]
+
+# ============================================
+# 9. 性能优化配置
+# ============================================
+
+performance:
+  # 异步日志
+  async_logging:
+    enabled: true
+    queue_size: 10000
+    workers: 2
+
+  # 批量写入
+  batch_writing:
+    enabled: true
+    batch_size: 100
+    flush_interval: 1.0  # 秒
+
+  # 缓存
+  caching:
+    enabled: true
+    cache_size: 1000
+    ttl: 300  # 秒
+
+  # 压缩
+  compression:
+    enabled: true
+    algorithm: "gzip"
+    level: 6
+
+# ============================================
+# 10. 安全配置
+# ============================================
+
+security:
+  # 敏感数据脱敏
+  data_masking:
+    enabled: true
+    patterns:
+      - "(password|passwd|pwd)=[^&]*"
+      - "(token|api_key|secret)=[^&]*"
+      - "(credit_card|cc_number)=[^&]*"
+      - "(ssn|social_security)=[^&]*"
+
+  # 访问控制
+  access_control:
+    log_files: "0640"  # 文件权限
+    directory: "0750"  # 目录权限
+    user: "appuser"    # 运行用户
+    group: "appgroup"  # 运行组
+
+  # 审计日志
+  audit:
+    enabled: true
+    file: "/var/log/app/audit.log"
+    events:
+      - "user_login"
+      - "user_logout"
+      - "permission_change"
+      - "data_access"
+
+# ============================================
+# 11. 集成配置
+# ============================================
+
+integrations:
+  # ELK Stack集成
+  elk:
+    enabled: true
+    logstash:
+      host: "logstash.example.com"
+      port: 5044
+      ssl: true
+    elasticsearch:
+      hosts: ["elasticsearch.example.com:9200"]
+      index: "app-logs-%{+YYYY.MM.dd}"
+      username: "elastic"
+      password: "${ES_PASSWORD}"
+
+  # 云服务集成
+  cloudwatch:
+    enabled: false
+    log_group: "/aws/ec2/app"
+    region: "us-east-1"
+
+  # 监控系统集成
+  prometheus:
+    enabled: true
+    port: 9090
+    metrics:
+      - "log_messages_total"
+      - "log_errors_total"
+      - "log_latency_seconds"
+
+  # 分布式追踪
+  opentelemetry:
+    enabled: true
+    endpoint: "http://jaeger:14268/api/traces"
+    service_name: "app-service"
+
+# ============================================
+# 12. 使用说明
+# ============================================
+
+usage:
+  # 加载配置
+  python: |
+    import yaml
+    import logging.config
+
+    with open('logging_config.yaml', 'r') as f:
+        config = yaml.safe_load(f)
+
+    # 应用环境特定配置
+    env = os.getenv('APP_ENV', 'development')
+    if env in config:
+        config.update(config[env])
+
+    logging.config.dictConfig(config)
+
+  # 获取日志器
+  get_logger: |
+    import logging
+
+    # 应用日志器
+    app_logger = logging.getLogger('app')
+
+    # 模块特定日志器
+    api_logger = logging.getLogger('app.api')
+    db_logger = logging.getLogger('app.db')
+
+  # 记录日志
+  log_examples: |
+    # 不同级别日志
+    app_logger.debug("调试信息")
+    app_logger.info("一般信息")
+    app_logger.warning("警告信息")
+    app_logger.error("错误信息")
+    app_logger.critical("严重错误")
+
+    # 结构化日志
+    app_logger.info("用户操作", extra={
+        'user_id': '123',
+        'action': 'login',
+        'ip_address': '192.168.1.1'
+    })
+
+    # 异常日志
+    try:
+        risky_operation()
+    except Exception as e:
+        app_logger.error("操作失败", exc_info=True)
+
+# ============================================
+# 13. 维护任务
+# ============================================
+
+maintenance:
+  # 日志清理
+  cleanup:
+    schedule: "0 2 * * *"  # 每天凌晨2点
+    retention_days: 90
+    patterns:
+      - "/var/log/app/*.log.*"
+      - "/var/log/app/archive/*"
+
+  # 统计分析
+  statistics:
+    schedule: "0 1 * * *"  # 每天凌晨1点
+    reports:
+      - "daily_summary"
+      - "error_analysis"
+      - "performance_report"
+
+  # 健康检查
+  health_check:
+    schedule: "*/5 * * * *"  # 每5分钟
+    checks:
+      - "disk_space"
+      - "log_rotation"
+      - "external_services"

@@ -1,0 +1,15 @@
+{
+  "name": "axios_teaching",
+  "version": "1.0.0",
+  "description": "你现在不追求从零写大型项目，而是先做到：",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.13.6"
+  }
+}
